@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FITI 견적서 관리 시스템</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#0b0d12;--s1:#111318;--s2:#171a22;--s3:#1e222d;--s4:#252a38;
+  --bd:#2b3044;--bd2:#363d54;
+  --accent:#4f8cff;--adim:rgba(79,140,255,.12);
+  --accent2:#00cfaa;--a2dim:rgba(0,207,170,.1);
+  --text:#dde3f0;--muted:#6b7494;--dim:#3d4461;
+  --danger:#ff4d6d;--warn:#ffb347;--success:#00cfaa;
+  --mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans KR',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:13px;height:100vh;overflow:hidden}
+.shell{display:grid;grid-template-columns:300px 1fr;grid-template-rows:52px 1fr;height:100vh}
+
+/* HEADER */
+header{grid-column:1/-1;background:var(--s1);border-bottom:1px solid var(--bd);display:flex;align-items:center;padding:0 20px;gap:14px;z-index:20}
+.logo{width:30px;height:30px;background:var(--accent);border-radius:7px;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;color:#fff}
+.logo-title{font-size:14px;font-weight:600}
+.logo-sub{font-size:11px;color:var(--muted);font-family:var(--mono);margin-left:4px}
+.hdr-r{margin-left:auto;display:flex;align-items:center;gap:10px}
+.pulse{width:6px;height:6px;border-radius:50%;background:var(--accent2);box-shadow:0 0 6px var(--accent2);animation:blink 2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+.hdr-txt{font-size:11px;color:var(--muted);font-family:var(--mono)}
+
+/* SIDEBAR */
+.sidebar{background:var(--s1);border-right:1px solid var(--bd);display:flex;flex-direction:column;overflow:hidden}
+.sb-top{padding:14px;border-bottom:1px solid var(--bd)}
+.sb-lbl{font-size:10px;font-family:var(--mono);color:var(--dim);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:8px}
+.sb-search{position:relative}
+.sb-search input{width:100%;background:var(--s2);border:1px solid var(--bd);border-radius:6px;padding:7px 10px 7px 30px;color:var(--text);font-size:12px;outline:none;transition:border-color .15s;font-family:var(--sans)}
+.sb-search input:focus{border-color:var(--accent)}
+.sb-search input::placeholder{color:var(--dim)}
+.sb-search .ico{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--dim);pointer-events:none}
+.sb-list{flex:1;overflow-y:auto;padding:6px}
+.sb-list::-webkit-scrollbar{width:3px}
+.sb-list::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:2px}
+
+/* Template groups */
+.tg{margin-bottom:2px}
+.tg-hdr{display:flex;align-items:center;gap:7px;padding:6px 10px;border-radius:6px;cursor:pointer;transition:background .1s;user-select:none}
+.tg-hdr:hover{background:var(--s2)}
+.tg-arrow{font-size:9px;color:var(--muted);transition:transform .2s;flex-shrink:0}
+.tg.open .tg-arrow{transform:rotate(90deg)}
+.tg-num{font-family:var(--mono);font-size:10px;color:var(--accent);flex-shrink:0}
+.tg-name{font-size:11.5px;color:var(--text);font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tg-cnt{font-size:10px;color:var(--dim);font-family:var(--mono);flex-shrink:0}
+.tg-sheets{display:none;padding-left:16px}
+.tg.open .tg-sheets{display:block}
+.tg-sheet{display:flex;align-items:center;gap:7px;padding:5px 10px;border-radius:5px;cursor:pointer;transition:background .1s;margin-bottom:1px;border:1px solid transparent}
+.tg-sheet:hover{background:var(--s2)}
+.tg-sheet.active{background:var(--adim);border-color:rgba(79,140,255,.3)}
+.tg-sheet-name{font-size:11px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tg-sheet-cnt{font-size:10px;color:var(--dim);font-family:var(--mono)}
+.tg-single{display:flex;align-items:center;gap:7px;padding:7px 10px;border-radius:6px;cursor:pointer;transition:background .1s;margin-bottom:2px;border:1px solid transparent}
+.tg-single:hover{background:var(--s2)}
+.tg-single.active{background:var(--adim);border-color:rgba(79,140,255,.3)}
+.tg-single-num{font-family:var(--mono);font-size:10px;color:var(--accent)}
+.tg-single-name{font-size:11.5px;color:var(--text);font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tg-single-cnt{font-size:10px;color:var(--dim);font-family:var(--mono)}
+
+/* MAIN */
+.main{display:flex;flex-direction:column;overflow:hidden}
+.toolbar{padding:10px 18px;border-bottom:1px solid var(--bd);background:var(--s1);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.tb-sec{display:flex;align-items:center;gap:7px}
+.tb-div{width:1px;height:18px;background:var(--bd2)}
+.tb-lbl{font-size:11px;color:var(--muted);white-space:nowrap}
+input.fi{background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:5px 9px;color:var(--text);font-family:var(--sans);font-size:12px;outline:none;transition:border-color .15s}
+input.fi:focus{border-color:var(--accent)}
+input.fi::placeholder{color:var(--dim)}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:5px 13px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;border:none;transition:all .15s;font-family:var(--sans);white-space:nowrap}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:#6aa0ff;box-shadow:0 0 10px rgba(79,140,255,.3)}
+.btn-success{background:var(--accent2);color:#0b0d12}
+.btn-success:hover{background:#00efbe}
+.btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--bd)}
+.btn-ghost:hover{background:var(--s2);color:var(--text)}
+.btn-sm{padding:4px 10px;font-size:11px}
+
+/* CONTENT */
+.content{flex:1;overflow-y:auto;padding:18px}
+.content::-webkit-scrollbar{width:5px}
+.content::-webkit-scrollbar-thumb{background:var(--bd);border-radius:3px}
+
+/* EMPTY */
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 20px;text-align:center;gap:12px}
+.empty-ico{font-size:42px;opacity:.3}
+.empty-t{font-size:14px;color:var(--muted)}
+.empty-d{font-size:12px;color:var(--dim);line-height:1.7}
+
+/* CARD */
+.card{background:var(--s1);border:1px solid var(--bd);border-radius:10px;overflow:hidden;margin-bottom:14px}
+.card-hdr{padding:10px 14px;border-bottom:1px solid var(--bd);background:var(--s2);display:flex;align-items:center;justify-content:space-between}
+.card-title{font-size:10px;font-family:var(--mono);color:var(--accent);letter-spacing:1px;text-transform:uppercase;font-weight:500}
+.card-body{padding:14px}
+
+/* INFO GRID */
+.ig{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.if{display:flex;flex-direction:column;gap:4px}
+.if label{font-size:10px;color:var(--dim);font-family:var(--mono)}
+.if input{background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:6px 9px;color:var(--text);font-size:12px;outline:none;transition:border-color .15s;font-family:var(--sans)}
+.if input:focus{border-color:var(--accent)}
+.if input::placeholder{color:var(--dim)}
+
+/* ====================================================
+   ITEMS TABLE — with expandable group rows
+   ==================================================== */
+.tbl-wrap{overflow-x:auto}
+table.qt{width:100%;border-collapse:collapse;font-size:12px}
+.qt thead tr{background:var(--s2)}
+.qt th{padding:7px 8px;text-align:left;font-size:10px;font-family:var(--mono);color:var(--dim);letter-spacing:.6px;text-transform:uppercase;font-weight:500;border-bottom:1px solid var(--bd);white-space:nowrap}
+.qt td{padding:5px 8px;border-bottom:1px solid var(--bd);vertical-align:middle}
+.qt tbody tr:last-child td{border-bottom:none}
+
+/* SINGLE row */
+.row-single:hover{background:var(--s2)}
+/* GROUP PARENT row */
+.row-group-hdr{background:var(--s3);cursor:pointer;user-select:none}
+.row-group-hdr:hover{background:var(--s4)}
+.row-group-hdr td{border-bottom:none}
+/* GROUP CHILD row */
+.row-child{background:var(--s1)}
+.row-child:hover{background:var(--s2)}
+.row-child td:first-child{padding-left:28px}
+/* CHILD checkbox column */
+.child-check-cell{width:28px;text-align:center;padding-left:0!important}
+
+/* Expand arrow */
+.expand-arrow{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;font-size:10px;color:var(--muted);transition:transform .2s;flex-shrink:0}
+.expand-arrow.open{transform:rotate(90deg)}
+
+/* Group label */
+.group-label{font-size:12px;font-weight:600;color:var(--text)}
+.group-sub{font-size:10px;color:var(--muted);margin-left:6px;font-family:var(--mono)}
+
+/* Child label */
+.child-label{font-size:12px;color:var(--muted)}
+
+/* Checkbox */
+input[type=checkbox].child-cb{
+  width:14px;height:14px;accent-color:var(--accent);cursor:pointer;
+}
+
+/* Editable inputs inside table */
+.qt input[type=text],.qt input[type=number]{background:transparent;border:none;color:var(--text);font-family:var(--sans);font-size:12px;outline:none;width:100%;padding:2px 4px;border-radius:3px;transition:background .1s}
+.qt input[type=text]:hover,.qt input[type=number]:hover{background:var(--s3)}
+.qt input[type=text]:focus,.qt input[type=number]:focus{background:var(--s3);box-shadow:0 0 0 1px var(--accent)}
+.qt input[type=number]{text-align:right;font-family:var(--mono)}
+
+/* Column widths */
+.col-no{width:34px;text-align:center;color:var(--dim);font-family:var(--mono);font-size:11px}
+.col-drag{width:16px;padding:0 3px!important}
+.col-item{min-width:150px}
+.col-std{min-width:140px}
+.col-price{width:100px}
+.col-qty{width:60px}
+.col-total{width:100px;font-family:var(--mono);color:var(--accent2);text-align:right}
+.col-days{width:80px}
+.col-note{min-width:90px}
+.col-del{width:34px;text-align:center}
+
+.drag-handle{cursor:grab;color:var(--dim);font-size:13px;user-select:none}
+.drag-handle:active{cursor:grabbing}
+tr.drag-over td{border-top:2px solid var(--accent)!important}
+tr.dragging{opacity:.4}
+
+.del-btn{width:22px;height:22px;border-radius:4px;border:1px solid var(--bd);background:transparent;color:var(--dim);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-size:13px;transition:all .1s}
+.del-btn:hover{background:rgba(255,77,109,.12);border-color:var(--danger);color:var(--danger)}
+
+/* Totals */
+.col-total-val{font-family:var(--mono);font-size:12px;color:var(--accent2);text-align:right}
+.col-price-val{font-family:var(--mono);font-size:12px;text-align:right;color:var(--text)}
+
+/* SELECTED SUMMARY per group */
+.group-sel-summary{font-size:10px;color:var(--accent2);font-family:var(--mono);margin-left:8px}
+
+/* FEES & SUMMARY */
+.bottom-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.fee-row{display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--bd)}
+.fee-row:last-child{border-bottom:none}
+.fee-lbl{font-size:12px;color:var(--muted)}
+.fee-in{background:var(--s2);border:1px solid var(--bd);border-radius:4px;padding:4px 8px;color:var(--text);font-family:var(--mono);font-size:12px;width:110px;text-align:right;outline:none}
+.fee-in:focus{border-color:var(--accent)}
+.sum-box{background:var(--s2);border:1px solid var(--bd);border-radius:7px;padding:14px}
+.sum-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0}
+.sum-lbl{color:var(--muted);font-size:12px}
+.sum-val{font-family:var(--mono);font-size:12px;color:var(--text)}
+.sum-total{border-top:1px solid var(--bd);margin-top:6px;padding-top:6px}
+.sum-total .sum-lbl{color:var(--text);font-weight:600;font-size:13px}
+.sum-total .sum-val{color:var(--accent2);font-size:15px;font-weight:600}
+.bank-box{margin-top:10px;padding:9px;background:var(--s2);border-radius:5px;font-size:11px;color:var(--dim);line-height:1.7}
+.bank-box strong{color:var(--muted);display:block;margin-bottom:2px}
+
+/* BADGE */
+.badge{display:inline-flex;align-items:center;padding:2px 6px;border-radius:3px;font-size:10px;font-family:var(--mono)}
+.badge-blue{background:rgba(79,140,255,.15);color:var(--accent)}
+.badge-green{background:rgba(0,207,170,.12);color:var(--accent2)}
+
+/* MODAL */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s}
+.overlay.show{opacity:1;pointer-events:all}
+.modal{background:var(--s1);border:1px solid var(--bd);border-radius:12px;width:480px;box-shadow:0 20px 50px rgba(0,0,0,.5);transform:scale(.95);transition:transform .2s}
+.overlay.show .modal{transform:scale(1)}
+.mhdr{padding:14px 18px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between}
+.mtitle{font-size:14px;font-weight:600}
+.mclose{width:26px;height:26px;border-radius:5px;border:1px solid var(--bd);background:transparent;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center}
+.mclose:hover{background:var(--s2)}
+.mbody{padding:16px 18px}
+.mfoot{padding:10px 18px;border-top:1px solid var(--bd);display:flex;justify-content:flex-end;gap:8px}
+.exp-opt{display:flex;align-items:center;gap:14px;padding:13px;border:1px solid var(--bd);border-radius:8px;cursor:pointer;transition:all .15s;margin-bottom:8px}
+.exp-opt:hover,.exp-opt.sel{border-color:var(--accent);background:var(--adim)}
+.exp-ico{font-size:26px}
+.exp-title{font-size:13px;font-weight:600;margin-bottom:3px}
+.exp-desc{font-size:11px;color:var(--muted)}
+
+/* TOAST */
+.toast{position:fixed;bottom:22px;right:22px;background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text);box-shadow:0 6px 20px rgba(0,0,0,.4);transform:translateY(70px);opacity:0;transition:all .25s;z-index:300;display:flex;align-items:center;gap:7px}
+.toast.show{transform:translateY(0);opacity:1}
+.toast.success{border-color:rgba(0,207,170,.4)}
+.toast.error{border-color:rgba(255,77,109,.4)}
+
+/* "no items selected" warning in group */
+.group-none-warn{color:var(--warn);font-size:10px;font-family:var(--mono);margin-left:6px}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<header>
+  <div class="logo">FT</div>
+  <div><span class="logo-title">FITI 시험연구원</span><span class="logo-sub">견적서 관리 시스템</span></div>
+  <div class="hdr-r">
+    <div class="pulse"></div>
+    <span class="hdr-txt">v2025.07 · 오창분원</span>
+  </div>
+</header>
+
+<aside class="sidebar">
+  <div class="sb-top">
+    <div class="sb-lbl">표준 견적서</div>
+    <div class="sb-search">
+      <span class="ico">⌕</span>
+      <input type="text" id="tplSearch" placeholder="규격번호 / 품목명 검색…" oninput="filterTpl()">
+    </div>
+  </div>
+  <div class="sb-list" id="tplList"></div>
+</aside>
+
+<main class="main">
+  <div class="toolbar">
+    <div class="tb-sec">
+      <span class="tb-lbl">견적번호</span>
+      <input type="text" class="fi" id="quoteNo" style="width:120px" placeholder="자동생성">
+    </div>
+    <div class="tb-sec">
+      <span class="tb-lbl">견적일자</span>
+      <input type="date" class="fi" id="quoteDate" style="width:130px">
+    </div>
+    <div class="tb-sec">
+      <span class="tb-lbl">담당자</span>
+      <input type="text" class="fi" id="manager" style="width:80px" placeholder="담당자명">
+    </div>
+    <div class="tb-div"></div>
+    <button class="btn btn-ghost btn-sm" onclick="clearAll()">초기화</button>
+    <button class="btn btn-ghost btn-sm" onclick="addSingleItem()">+ 항목 추가</button>
+    <button class="btn btn-primary" onclick="showExport()">
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M2 14h12v-1H2v1zm7-3.5V3H7v7.5L4 7.5 3 8.5l5 5 5-5-1-1-3 2.5z"/></svg>
+      내보내기
+    </button>
+  </div>
+
+  <div class="content">
+    <div id="emptyState" class="empty">
+      <div class="empty-ico">📋</div>
+      <div class="empty-t">왼쪽에서 표준견적서를 선택하세요</div>
+      <div class="empty-d">규격번호를 검색하거나 목록에서 선택하면<br>시험 항목이 자동으로 불러와집니다.<br><br>괄호 안에 세부 타입이 있는 항목은<br>▶ 펼쳐서 원하는 항목만 체크하세요.</div>
+    </div>
+    <div id="editor" style="display:none">
+
+      <div class="card">
+        <div class="card-hdr"><span class="card-title">수신 정보</span></div>
+        <div class="card-body">
+          <div class="ig">
+            <div class="if"><label>수신 (업체명)</label><input type="text" id="clientName" placeholder="업체명"></div>
+            <div class="if"><label>참조 (담당자)</label><input type="text" id="clientContact" placeholder="담당자명"></div>
+            <div class="if"><label>연락처</label><input type="text" id="clientPhone" placeholder="전화번호"></div>
+            <div class="if"><label>이메일</label><input type="text" id="clientEmail" placeholder="이메일"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hdr">
+          <span class="card-title">시험 항목</span>
+          <div style="display:flex;gap:7px;align-items:center">
+            <span class="badge badge-blue" id="cntBadge">0 항목</span>
+            <button class="btn btn-ghost btn-sm" onclick="addSingleItem()">+ 행 추가</button>
+          </div>
+        </div>
+        <div class="card-body" style="padding:0">
+          <div class="tbl-wrap">
+            <table class="qt">
+              <thead>
+                <tr>
+                  <th class="col-no">#</th>
+                  <th class="col-drag"></th>
+                  <th class="col-item">항목 / 세부 선택</th>
+                  <th class="col-std">표준번호/시험방법</th>
+                  <th class="col-price">단가 (원)</th>
+                  <th class="col-qty">시료수</th>
+                  <th class="col-total">소계 (원)</th>
+                  <th class="col-days">소요일</th>
+                  <th class="col-note">비고</th>
+                  <th class="col-del"></th>
+                </tr>
+              </thead>
+              <tbody id="itemsBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="bottom-grid">
+        <div class="card">
+          <div class="card-hdr"><span class="card-title">추가 수수료</span></div>
+          <div class="card-body">
+            <div class="fee-row"><span class="fee-lbl">기본료</span><input type="number" class="fee-in" id="fBase" value="0" oninput="recalc()"></div>
+            <div class="fee-row"><span class="fee-lbl">부본료</span><input type="number" class="fee-in" id="fCopy" value="0" oninput="recalc()"></div>
+            <div class="fee-row"><span class="fee-lbl">번역부본료</span><input type="number" class="fee-in" id="fTrans" value="0" oninput="recalc()"></div>
+            <div class="fee-row"><span class="fee-lbl">분리발급료</span><input type="number" class="fee-in" id="fSplit" value="0" oninput="recalc()"></div>
+            <div class="fee-row"><span class="fee-lbl">시험시편료</span><input type="number" class="fee-in" id="fSpec" value="0" oninput="recalc()"></div>
+            <div class="fee-row"><span class="fee-lbl">우송료</span><input type="number" class="fee-in" id="fPost" value="3500" oninput="recalc()"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-hdr"><span class="card-title">견적 요약</span></div>
+          <div class="card-body">
+            <div class="sum-box">
+              <div class="sum-row"><span class="sum-lbl">시험수수료 소계</span><span class="sum-val" id="sTest">0</span></div>
+              <div class="sum-row"><span class="sum-lbl">추가 수수료 합계</span><span class="sum-val" id="sFee">0</span></div>
+              <div class="sum-row"><span class="sum-lbl">부가세 (10%)</span><span class="sum-val" id="sVat">0</span></div>
+              <div class="sum-row sum-total"><span class="sum-lbl">최종 견적금액</span><span class="sum-val" id="sTotal">0원</span></div>
+            </div>
+            <div class="bank-box">
+              <strong>입금계좌</strong>
+              국민은행 443701-04-120610<br>
+              예금주: (재)FITI시험연구원 오창분원
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</main>
+</div>
+
+<!-- EXPORT MODAL -->
+<div class="overlay" id="expModal">
+  <div class="modal">
+    <div class="mhdr"><span class="mtitle">견적서 내보내기</span><button class="mclose" onclick="closeModal()">✕</button></div>
+    <div class="mbody">
+      <div class="exp-opt sel" id="optXlsx" onclick="selExp('xlsx')">
+        <div class="exp-ico">📊</div>
+        <div><div class="exp-title">Excel (.xlsx)</div><div class="exp-desc">원본 견적서 양식 그대로 — 이후 편집 가능</div></div>
+      </div>
+      <div class="exp-opt" id="optPdf" onclick="selExp('pdf')">
+        <div class="exp-ico">📄</div>
+        <div><div class="exp-title">PDF (인쇄)</div><div class="exp-desc">업체 발송용 인쇄 레이아웃으로 출력</div></div>
+      </div>
+    </div>
+    <div class="mfoot">
+      <button class="btn btn-ghost" onclick="closeModal()">취소</button>
+      <button class="btn btn-success" onclick="doExport()">내보내기</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════
+let S = {
+  tpl: null,
+  // items: array of {type:'single'|'group', ...}
+  // group items have: item, children:[], expanded:bool
+  // child items have: label, unit_price, qty, std_method, days, note, checked:bool
+  // single items have: item, sub_item, unit_price, qty, std_method, days, note
+  items: [],
+  expType: 'xlsx'
+};
+
+// ═══════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('quoteDate').value = new Date().toISOString().split('T')[0];
+  document.getElementById('quoteNo').value = 'Q-' + Date.now().toString().slice(-6);
+  document.getElementById('manager').value = '최용덕';
+  renderTplList();
+});
+
+// ═══════════════════════════════════════════════════
+// SIDEBAR
+// ═══════════════════════════════════════════════════
+function renderTplList(q = '') {
+  const list = document.getElementById('tplList');
+  const ql = q.toLowerCase();
+  const data = typeof QUOTE_TEMPLATES !== 'undefined' ? QUOTE_TEMPLATES : [];
+
+  const filtered = data.filter(t =>
+    !q || t.std_num.toLowerCase().includes(ql) || t.name.toLowerCase().includes(ql) || t.sheet.toLowerCase().includes(ql)
+  );
+
+  const groups = {};
+  filtered.forEach(t => {
+    if (!groups[t.std_num]) {
+      let nm = t.name.replace(t.std_num,'').replace(/^[_\s\-]+/,'').replace(/_?Rev\.\S+/gi,'').trim();
+      groups[t.std_num] = { num: t.std_num, name: nm || t.std_num, sheets: [] };
+    }
+    groups[t.std_num].sheets.push(t);
+  });
+
+  list.innerHTML = '';
+  Object.values(groups).forEach(g => {
+    if (g.sheets.length === 1) {
+      const t = g.sheets[0];
+      const div = document.createElement('div');
+      div.className = 'tg-single' + (S.tpl === t ? ' active' : '');
+      div.onclick = () => loadTpl(t, div);
+      div.innerHTML = `<span class="tg-single-num">${g.num}</span><span class="tg-single-name" title="${g.name}">${g.name}</span><span class="tg-single-cnt">${t.items.length}</span>`;
+      list.appendChild(div);
+    } else {
+      const wrap = document.createElement('div');
+      wrap.className = 'tg' + (g.sheets.some(t => S.tpl === t) ? ' open' : '');
+      const hdr = document.createElement('div');
+      hdr.className = 'tg-hdr';
+      hdr.innerHTML = `<span class="tg-arrow">▶</span><span class="tg-num">${g.num}</span><span class="tg-name" title="${g.name}">${g.name}</span><span class="tg-cnt">${g.sheets.length}종</span>`;
+      hdr.onclick = () => wrap.classList.toggle('open');
+      const sheetsDiv = document.createElement('div');
+      sheetsDiv.className = 'tg-sheets';
+      g.sheets.forEach(t => {
+        const s = document.createElement('div');
+        s.className = 'tg-sheet' + (S.tpl === t ? ' active' : '');
+        s.onclick = (e) => { e.stopPropagation(); loadTpl(t, s); };
+        s.innerHTML = `<span style="font-size:10px;color:var(--dim)">📋</span><span class="tg-sheet-name" title="${t.sheet}">${t.sheet}</span><span class="tg-sheet-cnt">${t.items.length}</span>`;
+        sheetsDiv.appendChild(s);
+      });
+      wrap.appendChild(hdr); wrap.appendChild(sheetsDiv);
+      list.appendChild(wrap);
+    }
+  });
+  if (!list.innerHTML) list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--dim);font-size:12px">검색 결과 없음</div>';
+}
+
+function filterTpl() { renderTplList(document.getElementById('tplSearch').value); }
+
+// ═══════════════════════════════════════════════════
+// LOAD TEMPLATE
+// ═══════════════════════════════════════════════════
+function loadTpl(t, el) {
+  S.tpl = t;
+  // Build state items from template
+  S.items = t.items.map((item, idx) => {
+    if (item.type === 'group') {
+      return {
+        _id: idx,
+        type: 'group',
+        item: item.item,
+        std_method: item.std_method || '',
+        days: item.days || '',
+        expanded: true,
+        children: item.children.map(c => ({
+          label: c.label,
+          unit_price: c.unit_price || 0,
+          qty: c.qty || 1,
+          std_method: c.std_method || item.std_method || '',
+          days: c.days || item.days || '',
+          note: c.note || '',
+          checked: false   // ← 기본 미선택
+        }))
+      };
+    } else {
+      return {
+        _id: idx,
+        type: 'single',
+        item: item.item || '',
+        sub_item: item.sub_item || '',
+        unit_price: item.unit_price || 0,
+        qty: item.qty || 1,
+        std_method: item.std_method || '',
+        days: item.days || '',
+        note: item.note || ''
+      };
+    }
+  });
+
+  ['fBase','fCopy','fTrans','fSplit','fSpec'].forEach(id => document.getElementById(id).value = 0);
+  document.getElementById('fPost').value = 3500;
+
+  document.querySelectorAll('.tg-single,.tg-sheet').forEach(e => e.classList.remove('active'));
+  el.classList.add('active');
+
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('editor').style.display = 'block';
+  renderItems();
+  recalc();
+}
+
+// ═══════════════════════════════════════════════════
+// RENDER ITEMS TABLE
+// ═══════════════════════════════════════════════════
+function renderItems() {
+  const tbody = document.getElementById('itemsBody');
+  tbody.innerHTML = '';
+
+  // Count selected items for badge
+  let cnt = 0;
+  S.items.forEach(item => {
+    if (item.type === 'single') cnt++;
+    else cnt += item.children.filter(c => c.checked).length;
+  });
+  document.getElementById('cntBadge').textContent = cnt + ' 항목 선택됨';
+
+  S.items.forEach((item, idx) => {
+    if (item.type === 'group') {
+      renderGroupRow(tbody, item, idx);
+      if (item.expanded) {
+        item.children.forEach((child, ci) => renderChildRow(tbody, child, idx, ci));
+      }
+    } else {
+      renderSingleRow(tbody, item, idx);
+    }
+  });
+}
+
+function renderSingleRow(tbody, item, idx) {
+  const tr = document.createElement('tr');
+  tr.className = 'row-single';
+  tr.dataset.idx = idx;
+  tr.draggable = true;
+  setupDrag(tr, idx);
+  const tot = (item.unit_price || 0) * (item.qty || 1);
+  tr.innerHTML = `
+    <td class="col-no">${idx + 1}</td>
+    <td class="col-drag"><span class="drag-handle">⠿</span></td>
+    <td class="col-item">
+      <input type="text" value="${esc(item.item)}" oninput="updSingle(${idx},'item',this.value)" placeholder="시험 항목">
+    </td>
+    <td class="col-std"><input type="text" value="${esc(item.std_method)}" oninput="updSingle(${idx},'std_method',this.value)" placeholder="표준번호"></td>
+    <td class="col-price"><input type="number" value="${item.unit_price||0}" oninput="updSingle(${idx},'unit_price',+this.value)" min="0" step="1000"></td>
+    <td class="col-qty"><input type="number" value="${item.qty||1}" oninput="updSingle(${idx},'qty',+this.value)" min="1" max="99"></td>
+    <td class="col-total-val">${fmt(tot)}</td>
+    <td class="col-days"><input type="text" value="${esc(item.days)}" oninput="updSingle(${idx},'days',this.value)" placeholder="약 7일"></td>
+    <td class="col-note"><input type="text" value="${esc(item.note||'')}" oninput="updSingle(${idx},'note',this.value)"></td>
+    <td class="col-del"><button class="del-btn" onclick="delItem(${idx})">×</button></td>`;
+  tbody.appendChild(tr);
+}
+
+function renderGroupRow(tbody, item, idx) {
+  const checkedCount = item.children.filter(c => c.checked).length;
+  const selTotal = item.children.filter(c=>c.checked).reduce((s,c)=>s+(c.unit_price||0)*(c.qty||1),0);
+  const tr = document.createElement('tr');
+  tr.className = 'row-group-hdr';
+  tr.dataset.idx = idx;
+  tr.innerHTML = `
+    <td class="col-no" style="color:var(--accent);font-size:10px">${idx+1}</td>
+    <td class="col-drag">
+      <span class="expand-arrow ${item.expanded?'open':''}" onclick="toggleGroup(${idx})">▶</span>
+    </td>
+    <td class="col-item" colspan="4" onclick="toggleGroup(${idx})" style="cursor:pointer">
+      <span class="group-label">${esc(item.item)}</span>
+      ${checkedCount > 0
+        ? `<span class="group-sel-summary">${checkedCount}개 선택 · ${fmt(selTotal)}원</span>`
+        : `<span class="group-none-warn">▼ 펼쳐서 항목 선택</span>`}
+    </td>
+    <td class="col-total-val" style="color:var(--accent2)">${fmt(selTotal)}</td>
+    <td><input type="text" value="${esc(item.days)}" oninput="updGroup(${idx},'days',this.value)" placeholder="약 7일" style="background:transparent;border:none;color:var(--text);font-size:12px;outline:none;width:100%;padding:2px 4px;border-radius:3px" onfocus="this.style.background='var(--s3)'" onblur="this.style.background='transparent'"></td>
+    <td></td>
+    <td class="col-del"><button class="del-btn" onclick="delItem(${idx})">×</button></td>`;
+  tbody.appendChild(tr);
+}
+
+function renderChildRow(tbody, child, pidx, cidx) {
+  const tr = document.createElement('tr');
+  tr.className = 'row-child';
+  const tot = child.checked ? (child.unit_price||0)*(child.qty||1) : 0;
+  tr.innerHTML = `
+    <td class="child-check-cell" colspan="2" style="padding-left:20px">
+      <input type="checkbox" class="child-cb" ${child.checked?'checked':''} onchange="toggleChild(${pidx},${cidx},this.checked)">
+    </td>
+    <td class="col-item" style="padding-left:8px;color:${child.checked?'var(--text)':'var(--muted)'}">
+      ${esc(child.label)}
+    </td>
+    <td class="col-std" style="font-size:11px;color:var(--dim)">${esc(child.std_method||'')}</td>
+    <td class="col-price"><input type="number" value="${child.unit_price||0}" oninput="updChild(${pidx},${cidx},'unit_price',+this.value)" min="0" step="1000" ${child.checked?'':'style="color:var(--dim)"'}></td>
+    <td class="col-qty"><input type="number" value="${child.qty||1}" oninput="updChild(${pidx},${cidx},'qty',+this.value)" min="1" max="99" ${child.checked?'':'style="color:var(--dim)"'}></td>
+    <td class="col-total-val" style="${child.checked?'':'color:var(--dim)'}">${child.checked ? fmt(tot) : '—'}</td>
+    <td style="font-size:11px;color:var(--dim)">${esc(child.days||'')}</td>
+    <td class="col-note"><input type="text" value="${esc(child.note||'')}" oninput="updChild(${pidx},${cidx},'note',this.value)" style="${child.checked?'':'color:var(--dim)'}"></td>
+    <td></td>`;
+  tbody.appendChild(tr);
+}
+
+// ═══════════════════════════════════════════════════
+// INTERACTIONS
+// ═══════════════════════════════════════════════════
+function toggleGroup(idx) {
+  S.items[idx].expanded = !S.items[idx].expanded;
+  renderItems(); recalc();
+}
+
+function toggleChild(pidx, cidx, checked) {
+  S.items[pidx].children[cidx].checked = checked;
+  renderItems(); recalc();
+}
+
+function updSingle(idx, f, v) {
+  S.items[idx][f] = v;
+  renderItems(); recalc();
+}
+
+function updGroup(idx, f, v) {
+  S.items[idx][f] = v;
+  recalc();
+}
+
+function updChild(pidx, cidx, f, v) {
+  S.items[pidx].children[cidx][f] = v;
+  renderItems(); recalc();
+}
+
+function delItem(idx) {
+  S.items.splice(idx, 1);
+  renderItems(); recalc();
+}
+
+function addSingleItem() {
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('editor').style.display = 'block';
+  S.items.push({ type:'single', item:'', sub_item:'', unit_price:0, qty:1, std_method:'', days:'약 7일', note:'' });
+  renderItems(); recalc();
+  setTimeout(() => {
+    const rows = document.querySelectorAll('#itemsBody .row-single');
+    if (rows.length) rows[rows.length-1].querySelector('input').focus();
+  }, 50);
+}
+
+function clearAll() {
+  if (!confirm('모든 내용을 초기화하시겠습니까?')) return;
+  S.items = []; S.tpl = null;
+  document.querySelectorAll('.tg-single,.tg-sheet').forEach(e => e.classList.remove('active'));
+  document.getElementById('emptyState').style.display = '';
+  document.getElementById('editor').style.display = 'none';
+  document.getElementById('quoteNo').value = 'Q-' + Date.now().toString().slice(-6);
+}
+
+// ═══════════════════════════════════════════════════
+// DRAG & DROP (single rows only)
+// ═══════════════════════════════════════════════════
+let dragFrom = null;
+function setupDrag(tr, idx) {
+  tr.addEventListener('dragstart', e => { dragFrom=idx; tr.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; });
+  tr.addEventListener('dragend', () => tr.classList.remove('dragging'));
+  tr.addEventListener('dragover', e => { e.preventDefault(); document.querySelectorAll('tr.drag-over').forEach(r=>r.classList.remove('drag-over')); tr.classList.add('drag-over'); });
+  tr.addEventListener('drop', e => {
+    e.preventDefault(); tr.classList.remove('drag-over');
+    if (dragFrom !== null && dragFrom !== idx) {
+      const moved = S.items.splice(dragFrom, 1)[0];
+      S.items.splice(idx, 0, moved);
+      renderItems(); recalc();
+    }
+    dragFrom = null;
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// RECALC
+// ═══════════════════════════════════════════════════
+function recalc() {
+  let test = 0;
+  S.items.forEach(item => {
+    if (item.type === 'single') {
+      test += (item.unit_price||0)*(item.qty||1);
+    } else {
+      item.children.forEach(c => { if (c.checked) test += (c.unit_price||0)*(c.qty||1); });
+    }
+  });
+  const fees = ['fBase','fCopy','fTrans','fSplit','fSpec','fPost'].reduce((s,id)=>s+(+document.getElementById(id).value||0),0);
+  const vat = Math.round((test+fees)*0.1);
+  const total = test+fees+vat;
+  document.getElementById('sTest').textContent = fmt(test);
+  document.getElementById('sFee').textContent = fmt(fees);
+  document.getElementById('sVat').textContent = fmt(vat);
+  document.getElementById('sTotal').textContent = fmt(total)+'원';
+}
+
+// ═══════════════════════════════════════════════════
+// EXPORT
+// ═══════════════════════════════════════════════════
+// Flatten all selected items for export
+function flatItems() {
+  const out = [];
+  S.items.forEach(item => {
+    if (item.type === 'single') {
+      out.push({ item: item.item, sub_item: item.sub_item||'', std_method: item.std_method||'', unit_price: item.unit_price||0, qty: item.qty||1, days: item.days||'', note: item.note||'' });
+    } else {
+      item.children.forEach(c => {
+        if (c.checked) {
+          out.push({ item: item.item+' ('+c.label+')', sub_item: '', std_method: c.std_method||item.std_method||'', unit_price: c.unit_price||0, qty: c.qty||1, days: c.days||item.days||'', note: c.note||'' });
+        }
+      });
+    }
+  });
+  return out;
+}
+
+function showExport() {
+  const items = flatItems();
+  if (!items.length) { toast('선택된 항목이 없습니다','error'); return; }
+  document.getElementById('expModal').classList.add('show');
+}
+function closeModal() { document.getElementById('expModal').classList.remove('show'); }
+function selExp(t) {
+  S.expType = t;
+  document.getElementById('optXlsx').classList.toggle('sel', t==='xlsx');
+  document.getElementById('optPdf').classList.toggle('sel', t==='pdf');
+}
+async function doExport() {
+  closeModal();
+  try {
+    if (S.expType === 'xlsx') await exportXlsx();
+    else exportPdf();
+  } catch (err) {
+    console.error(err);
+    toast('내보내기 중 오류가 발생했습니다: ' + (err.message || err), 'error');
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// EXCEL EXPORT
+// ═══════════════════════════════════════════════════
+async function exportXlsx() {
+  const cN = gv('clientName'), cC = gv('clientContact');
+  const qDate = gv('quoteDate'), mgr = gv('manager'), qNo = gv('quoteNo');
+  const items = flatItems();
+  if (!items.length) { toast('선택된 항목이 없습니다', 'error'); return; }
+
+  const test = items.reduce((s,i)=>s+(i.unit_price||0)*(i.qty||1),0);
+  const fBase=gn('fBase'), fCopy=gn('fCopy'), fTrans=gn('fTrans'), fSplit=gn('fSplit'), fSpec=gn('fSpec'), fPost=gn('fPost');
+  const fees = fBase + fCopy + fTrans + fSplit + fSpec + fPost;
+  const vat = Math.round((test + fees) * 0.1);
+  const total = test + fees + vat;
+
+  const templateCandidates = [
+    './template.xlsx',
+    './quote-template.xlsx',
+    './견적서 양식.xlsx',
+    './견적서양식.xlsx',
+    './assets/template.xlsx'
+  ];
+
+  let wb = null;
+  let templateLoaded = false;
+  for (const url of templateCandidates) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const buf = await res.arrayBuffer();
+      wb = XLSX.read(buf, { type: 'array', cellStyles: true });
+      templateLoaded = true;
+      break;
+    } catch (e) {}
+  }
+
+  if (!templateLoaded) {
+    throw new Error('견적서 양식 파일을 찾지 못했습니다. index.html과 같은 폴더에 template.xlsx 또는 "견적서 양식.xlsx"를 함께 두세요.');
+  }
+
+  const sheetName = wb.SheetNames.includes('분리막') ? '분리막' : wb.SheetNames[0];
+  const ws = wb.Sheets[sheetName];
+  const R = XLSX.utils.decode_range(ws['!ref']);
+
+  const enc = XLSX.utils.encode_cell;
+  const dec = XLSX.utils.decode_cell;
+  const rangeToRef = XLSX.utils.encode_range;
+
+  function getCell(r, c) {
+    const addr = enc({ r: r - 1, c: c - 1 });
+    if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+    return ws[addr];
+  }
+  function setCell(r, c, v, forceType) {
+    const cell = getCell(r, c);
+    delete cell.f;
+    delete cell.w;
+    if (v === null || v === undefined || v === '') {
+      cell.t = 's'; cell.v = '';
+      return;
+    }
+    const t = forceType || (typeof v === 'number' ? 'n' : 's');
+    cell.t = t;
+    cell.v = v;
+    if (t === 'n') cell.z = '#,##0';
+  }
+  function clearCell(r, c) {
+    const cell = getCell(r, c);
+    delete cell.f; delete cell.w;
+    cell.t = 's'; cell.v = '';
+  }
+  function clone(obj) {
+    return obj ? JSON.parse(JSON.stringify(obj)) : obj;
+  }
+  function copyRowStyle(srcRow, dstRow) {
+    for (let c = 1; c <= 20; c++) {
+      const srcAddr = enc({ r: srcRow - 1, c: c - 1 });
+      const dstAddr = enc({ r: dstRow - 1, c: c - 1 });
+      const src = ws[srcAddr] || {};
+      const dst = ws[dstAddr] || { t: 's', v: '' };
+      if (src.s) dst.s = clone(src.s);
+      if (src.z) dst.z = src.z;
+      if (src.t == null) dst.t = 's';
+      if (dst.v == null) dst.v = '';
+      ws[dstAddr] = dst;
+    }
+    ws['!rows'] = ws['!rows'] || [];
+    ws['!rows'][dstRow - 1] = clone(ws['!rows']?.[srcRow - 1] || { hpx: 38 });
+  }
+
+  const itemStart = 12;
+  const templateItemRow = 12;
+  const blockStart = 13;
+  const blockEnd = 28;
+  const extraRows = Math.max(0, items.length - 1);
+
+  if (extraRows > 0) {
+    const oldRange = XLSX.utils.decode_range(ws['!ref']);
+    const oldEnd = oldRange.e.r + 1;
+
+    for (let r = oldEnd; r >= blockStart; r--) {
+      for (let c = 1; c <= 20; c++) {
+        const srcAddr = enc({ r: r - 1, c: c - 1 });
+        const dstAddr = enc({ r: r + extraRows - 1, c: c - 1 });
+        if (ws[srcAddr]) ws[dstAddr] = clone(ws[srcAddr]);
+        else delete ws[dstAddr];
+        if (r <= blockEnd) delete ws[srcAddr];
+      }
+    }
+
+    ws['!rows'] = ws['!rows'] || [];
+    for (let r = oldEnd; r >= blockStart; r--) {
+      ws['!rows'][r + extraRows - 1] = clone(ws['!rows'][r - 1] || {});
+      if (r <= blockEnd) ws['!rows'][r - 1] = undefined;
+    }
+
+    const merges = ws['!merges'] || [];
+    ws['!merges'] = merges.map(m => {
+      const nm = clone(m);
+      if (nm.s.r + 1 >= blockStart) {
+        nm.s.r += extraRows;
+        nm.e.r += extraRows;
+      }
+      return nm;
+    });
+
+    for (let i = 1; i <= extraRows; i++) copyRowStyle(templateItemRow, templateItemRow + i);
+    ws['!ref'] = rangeToRef({ s: oldRange.s, e: { r: oldRange.e.r + extraRows, c: oldRange.e.c } });
+  }
+
+  // header
+  setCell(4,4,cN || '');
+  setCell(6,4,cC || '');
+  setCell(7,4,qDate || '');
+  setCell(7,20,mgr || '');
+  setCell(9,6,total,'n');
+  setCell(9,13,total,'n');
+
+  // item rows
+  const itemEnd = itemStart + items.length - 1;
+  for (let r = itemStart; r <= itemEnd; r++) {
+    for (let c = 1; c <= 20; c++) clearCell(r, c);
+  }
+
+  items.forEach((item, i) => {
+    const r = itemStart + i;
+    const itemTotal = (item.unit_price || 0) * (item.qty || 1);
+    setCell(r,1,i+1,'n');
+    setCell(r,2,item.item || '');
+    setCell(r,6,item.std_method || '');
+    setCell(r,10,item.unit_price || 0,'n');
+    setCell(r,13,item.qty || 1,'n');
+    setCell(r,15,itemTotal,'n');
+    setCell(r,19,item.days || '');
+    setCell(r,20,item.note || '');
+  });
+
+  // totals block rows after shift
+  const rS = itemEnd + 1;
+  const rB = rS + 1;
+  const rC = rB + 1;
+  const rT2 = rC + 1;
+  const rSp = rT2 + 1;
+  const rSpc = rSp + 1;
+  const rP = rSpc + 1;
+  const rV = rP + 1;
+  const rTotal = rV + 1;
+
+  setCell(rS,15,test,'n');
+  setCell(rB,15,fBase,'n');
+  setCell(rC,15,fCopy,'n');
+  setCell(rT2,15,fTrans,'n');
+  setCell(rSp,15,fSplit,'n');
+  setCell(rSpc,15,fSpec,'n');
+  setCell(rP,15,fPost,'n');
+  setCell(rV,15,vat,'n');
+  setCell(rTotal,15,total,'n');
+
+  // Some templates reference total by formula. Fill visible cells directly as well.
+  setCell(21 + extraRows, 15, total, 'n');
+
+  // reset workbook metadata / range
+  const finalRange = XLSX.utils.decode_range(ws['!ref']);
+  ws['!ref'] = rangeToRef({ s: { r: 0, c: 0 }, e: { r: Math.max(finalRange.e.r, rTotal + 7), c: 19 } });
+
+  XLSX.writeFile(wb, `${qNo}_${cN||'업체'}_${S.tpl?.std_num||'견적서'}.xlsx`, { cellStyles: true });
+  toast('양식 기반 Excel 저장 완료 ✓', 'success');
+}
+
+// ═══════════════════════════════════════════════════
+// PDF EXPORT
+// ═══════════════════════════════════════════════════
+function exportPdf() {
+  const cN=gv('clientName'), cC=gv('clientContact'), qDate=gv('quoteDate'), mgr=gv('manager'), qNo=gv('quoteNo');
+  const items=flatItems();
+  const test=items.reduce((s,i)=>s+(i.unit_price||0)*(i.qty||1),0);
+  const fBase=gn('fBase'),fCopy=gn('fCopy'),fTrans=gn('fTrans'),fSplit=gn('fSplit'),fSpec=gn('fSpec'),fPost=gn('fPost');
+  const fees=fBase+fCopy+fTrans+fSplit+fSpec+fPost;
+  const vat=Math.round((test+fees)*0.1);
+  const total=test+fees+vat;
+
+  const rows=items.map((item,i)=>`
+    <tr>
+      <td style="text-align:center">${i+1}</td>
+      <td>${item.item||''}</td>
+      <td style="font-size:9pt">${item.std_method||''}</td>
+      <td style="text-align:right">${fmt(item.unit_price)}</td>
+      <td style="text-align:center">${item.qty}</td>
+      <td style="text-align:right;font-weight:600">${fmt((item.unit_price||0)*(item.qty||1))}</td>
+      <td style="text-align:center;font-size:9pt">${item.days||''}</td>
+      <td style="font-size:9pt">${item.note||''}</td>
+    </tr>`).join('');
+
+  const html=`<!DOCTYPE html>
+<html lang="ko"><head><meta charset="UTF-8"><title>견적서-${cN}</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans KR',sans-serif;font-size:10pt;padding:12mm 14mm 10mm;color:#111}
+h1{text-align:center;font-size:22pt;letter-spacing:12px;font-weight:700;border-top:3px solid #111;border-bottom:3px solid #111;padding:7px 0;margin-bottom:10px}
+table{width:100%;border-collapse:collapse}
+.info td{border:1px solid #888;padding:5px 8px;font-size:9.5pt}
+.info .lbl{font-weight:700;background:#eef2ff;white-space:nowrap}
+.total-bar{border:2.5px solid #111;padding:9px;text-align:center;font-size:14pt;font-weight:700;margin:9px 0;background:#f5f8ff}
+.items thead td{background:#1a2a4a;color:#fff;font-weight:600;font-size:9pt;padding:6px 7px;text-align:center;border:1px solid #1a2a4a}
+.items tbody td{border:1px solid #ccc;padding:5px 7px}
+.items tbody tr:nth-child(even){background:#f7f9ff}
+.items tfoot td{background:#fff2cc;font-weight:700;border:1px solid #999;padding:5px 8px}
+.fees{width:52%;margin-left:auto;margin-top:6px}
+.fees td{border:1px solid #ccc;padding:4px 8px;font-size:9.5pt}
+.fees .lbl{background:#f5f5f5;font-weight:500}
+.fees .val{text-align:right}
+.fees .total td{background:#dde8ff;font-weight:700;font-size:11pt}
+.notes{margin-top:9px;font-size:8.5pt;color:#555;line-height:1.9;border-top:1px solid #ddd;padding-top:6px}
+.sign{text-align:center;font-size:14pt;font-weight:700;letter-spacing:4px;margin-top:20px}
+@media print{body{padding:5mm}}
+</style></head><body>
+<h1>견 적 서</h1>
+<table class="info" style="margin-bottom:7px">
+<tr>
+  <td class="lbl" width="9%">수&nbsp;&nbsp;&nbsp;신</td>
+  <td colspan="3"><strong style="font-size:12pt">${cN}</strong> 귀중</td>
+  <td class="lbl" width="10%">상&nbsp;&nbsp;&nbsp;호</td>
+  <td colspan="3">(재)FITI시험연구원 오창분원</td>
+</tr><tr>
+  <td class="lbl">참&nbsp;&nbsp;&nbsp;조</td>
+  <td colspan="3">${cC?cC+' 님':''}</td>
+  <td class="lbl">사업자번호</td>
+  <td colspan="3">317-82-04050</td>
+</tr><tr>
+  <td class="lbl">견적날짜</td>
+  <td colspan="3">${qDate} <span style="font-size:8.5pt;color:#777">(유효기간 30일)</span></td>
+  <td class="lbl">주&nbsp;&nbsp;&nbsp;소</td>
+  <td colspan="3">(28115)충북 청주시 청원구 오창읍 양청3길 43</td>
+</tr><tr>
+  <td class="lbl">견적번호</td><td>${qNo}</td>
+  <td class="lbl">전화번호</td><td>043-711-8909</td>
+  <td class="lbl">대표자</td><td>윤주경</td>
+  <td class="lbl">담당자</td><td>${mgr}</td>
+</tr>
+</table>
+<div class="total-bar">견 적 금 액 : ₩ ${fmt(total)} 원 &nbsp;(부가세 포함)</div>
+<table class="items">
+<thead><tr>
+  <td width="4%">No.</td><td width="24%">항목</td>
+  <td width="16%">표준번호/시험방법</td>
+  <td width="9%">단가(원)</td><td width="6%">시료수</td>
+  <td width="11%">소계(원)</td><td width="8%">소요일</td><td>비고</td>
+</tr></thead>
+<tbody>${rows}</tbody>
+<tfoot><tr>
+  <td colspan="5" style="text-align:right">시험수수료 소계</td>
+  <td>${fmt(test)}</td><td colspan="2"></td>
+</tr></tfoot>
+</table>
+<table class="fees">
+${[[' 기본료',fBase],[' 부본료',fCopy],[' 번역부본료',fTrans],[' 분리발급료',fSplit],[' 시험시편료',fSpec],[' 우송료',fPost],[' 부가세 (10%)',vat]].map(([l,v])=>`<tr><td class="lbl">${l}</td><td class="val">${fmt(v)}</td></tr>`).join('')}
+<tr class="total"><td>합&nbsp;&nbsp;&nbsp;계</td><td style="text-align:right">₩ ${fmt(total)}</td></tr>
+</table>
+<div style="font-size:9pt;color:#666;margin-top:7px">입금계좌: 국민은행 443701-04-120610 &nbsp;|&nbsp; 예금주: (재)FITI시험연구원 오창분원</div>
+<div class="notes">[참고사항]<br>
+&nbsp;1. 사진 및 그래프 등 기타 추가사항에 대하여 시험수수료가 변경될 수 있습니다.<br>
+&nbsp;2. 시료 반납 요청시 우송료가 변경 될 수 있습니다.<br>
+&nbsp;3. E-MAIL로 받으신 성적서의 열람은 시험수수료 입금 확인 후 열람 가능합니다.<br>
+&nbsp;4. 성적서의 기재사항 변경 및 분리발급은 발행일로부터 7일 이내만 가능합니다.(수수료 추가 발생)
+</div>
+<div class="sign">( 재 ) F I T I &nbsp; 시 험 연 구 원 장</div>
+<script>window.onload=()=>window.print();<\/script>
+</body></html>`;
+
+  window.open(URL.createObjectURL(new Blob([html],{type:'text/html;charset=utf-8'})),'_blank');
+  toast('PDF 출력 창이 열렸습니다','success');
+}
+
+// ═══════════════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════════════
+function fmt(n){return Number(n||0).toLocaleString('ko-KR')}
+function esc(s){return(s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function gv(id){const el=document.getElementById(id);return el?el.value:''}
+function gn(id){return+(document.getElementById(id).value)||0}
+function toast(msg,type='info'){
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.className=`toast ${type} show`;
+  setTimeout(()=>el.classList.remove('show'),2800);
+}
+</script>
+
+<script src="templates.js"></script>
+</body>
+</html>
