@@ -878,135 +878,155 @@ async function exportXlsx() {
 
   toast('Excel 생성 중…', 'info');
   try {
-    // 1. template 로드
     const bin = atob(TMPL_B64);
     const buf = new Uint8Array(bin.length);
     for (let k=0;k<bin.length;k++) buf[k]=bin.charCodeAt(k);
     const zip = await JSZip.loadAsync(buf.buffer);
 
-    // 2. sharedStrings
+    // sharedStrings
     let ssXml = await zip.file('xl/sharedStrings.xml').async('string');
     const origCount = parseInt((ssXml.match(/uniqueCount="(\d+)"/) || ['','0'])[1]);
     const extra=[], ssMap={};
-    function addSS(v) {
+    function addSS(v){
       const s=String(v||'');
-      if (ssMap[s]!==undefined) return ssMap[s];
+      if(ssMap[s]!==undefined) return ssMap[s];
       const idx=origCount+extra.length; extra.push(s); ssMap[s]=idx; return idx;
     }
-    const iCN=addSS(cN), iCC=addSS(cC), iCP=addSS(cP), iDate=addSS(qDate), iMgr=addSS(mgr);
+    const iCN=addSS(cN),iCC=addSS(cC),iCP=addSS(cP),iDate=addSS(qDate),iMgr=addSS(mgr);
     const iItems=items.map(it=>({
       item:addSS(it.item||''), std:addSS(it.std_method||''),
       days:addSS(it.days||''), note:addSS(it.note||'')
     }));
     const newSIs=extra.map(s=>{
-      const e=s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-               .replace(/\r/g,'').replace(/\n/g,'&#10;');
+      const e=s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\r/g,'').replace(/\n/g,'&#10;');
       const ns=(s!==s.trim()||s.includes('\n'))?' xml:space="preserve"':'';
-      return `<si><t${ns}>${e}</t></si>`;
+      return '<si><t'+ns+'>'+e+'</t></si>';
     }).join('');
     const tc=origCount+extra.length;
-    ssXml=ssXml.replace(/count="\d+"/,`count="${tc}"`).replace(/uniqueCount="\d+"/,`uniqueCount="${tc}"`).replace('</sst>',newSIs+'</sst>');
+    ssXml=ssXml.replace(/count="\d+"/,'count="'+tc+'"').replace(/uniqueCount="\d+"/,'uniqueCount="'+tc+'"').replace('</sst>',newSIs+'</sst>');
     zip.file('xl/sharedStrings.xml',ssXml);
 
-    // 3. sheet1.xml
+    // sheet1.xml
     let xml = await zip.file('xl/worksheets/sheet1.xml').async('string');
     const n = items.length;
     const shift = n - 1;
 
-    // 3-1) 원본에서 행12, 행13~28 미리 추출
-    const row12Raw = xml.match(/<row r="12"[^>]*>[\s\S]*?<\/row>/)[0];
-    const footerOrig = {};
-    for (let old=13; old<=28; old++) {
-      const m = xml.match(new RegExp(`<row r="${old}"[^>]*>[\\s\\S]*?<\\/row>`));
-      if (m) footerOrig[old] = m[0];
+    // indexOf로 행 추출 (정규식 이스케이프 문제 없음)
+    function extractRow(x, rnum) {
+      const tag = '<row r="'+rnum+'"';
+      const s = x.indexOf(tag);
+      if (s < 0) return null;
+      const e = x.indexOf('</row>', s) + 6;
+      return x.slice(s, e);
     }
 
-    // 3-2) 행12 → n개 항목행 직접 생성
+    const row12Raw = extractRow(xml, 12);
+    const footerOrig = {};
+    for (let old=13; old<=28; old++) {
+      const r = extractRow(xml, old);
+      if (r) footerOrig[old] = r;
+    }
+
+    // 항목행 생성
     let itemRows = '';
     for (let i=0; i<n; i++) {
       const r=12+i, it=iItems[i], itd=items[i];
-      const iV=it.item!==undefined?` t="s"><v>${it.item}</v></c>`:'/>',
-            sV=it.std !==undefined?` t="s"><v>${it.std}</v></c>` :'/>',
-            dV=it.days!==undefined?` t="s"><v>${it.days}</v></c>`:'/>',
-            nV=it.note!==undefined?` t="s"><v>${it.note}</v></c>`:'/>'; 
-      itemRows+=
-        `<row r="${r}" spans="1:20" ht="50.1" customHeight="1" x14ac:dyDescent="0.3">`+
-        `<c r="A${r}" s="20"><v>${i+1}</v></c>`+
-        `<c r="B${r}" s="24"${iV}<c r="C${r}" s="25"/><c r="D${r}" s="25"/><c r="E${r}" s="26"/>`+
-        `<c r="F${r}" s="21"${sV}<c r="G${r}" s="22"/><c r="H${r}" s="22"/><c r="I${r}" s="23"/>`+
-        `<c r="J${r}" s="30"><v>${itd.unit_price||0}</v></c><c r="K${r}" s="30"/><c r="L${r}" s="30"/>`+
-        `<c r="M${r}" s="31"><v>${itd.qty||1}</v></c><c r="N${r}" s="32"/>`+
-        `<c r="O${r}" s="30"><f>J${r}*M${r}</f><v>0</v></c>`+
-        `<c r="P${r}" s="30"/><c r="Q${r}" s="30"/><c r="R${r}" s="30"/>`+
-        `<c r="S${r}" s="17"${dV}<c r="T${r}" s="18"${nV}</row>`;
+      const iV = (it.item!==undefined) ? ' t="s"><v>'+it.item+'</v></c>' : '/>';
+      const sV = (it.std !==undefined) ? ' t="s"><v>'+it.std +'</v></c>' : '/>';
+      const dV = (it.days!==undefined) ? ' t="s"><v>'+it.days+'</v></c>' : '/>';
+      const nV = (it.note!==undefined) ? ' t="s"><v>'+it.note+'</v></c>' : '/>';
+      itemRows +=
+        '<row r="'+r+'" spans="1:20" ht="50.1" customHeight="1" x14ac:dyDescent="0.3">'+
+        '<c r="A'+r+'" s="20"><v>'+(i+1)+'</v></c>'+
+        '<c r="B'+r+'" s="24"'+iV+
+        '<c r="C'+r+'" s="25"/><c r="D'+r+'" s="25"/><c r="E'+r+'" s="26"/>'+
+        '<c r="F'+r+'" s="21"'+sV+
+        '<c r="G'+r+'" s="22"/><c r="H'+r+'" s="22"/><c r="I'+r+'" s="23"/>'+
+        '<c r="J'+r+'" s="30"><v>'+(itd.unit_price||0)+'</v></c>'+
+        '<c r="K'+r+'" s="30"/><c r="L'+r+'" s="30"/>'+
+        '<c r="M'+r+'" s="31"><v>'+(itd.qty||1)+'</v></c>'+
+        '<c r="N'+r+'" s="32"/>'+
+        '<c r="O'+r+'" s="30"><f>J'+r+'*M'+r+'</f><v>0</v></c>'+
+        '<c r="P'+r+'" s="30"/><c r="Q'+r+'" s="30"/><c r="R'+r+'" s="30"/>'+
+        '<c r="S'+r+'" s="17"'+dV+
+        '<c r="T'+r+'" s="18"'+nV+
+        '</row>';
     }
 
-    // 3-3) 행13~28 번호 변경 (원본 기준)
+    // 행13~28 번호 변경
     let footerRows = '';
     for (let old=13; old<=28; old++) {
       if (!footerOrig[old]) continue;
       let rx = footerOrig[old];
       const nw = old + shift;
-      rx = rx.replace(`<row r="${old}"`, `<row r="${nw}"`);
-      rx = rx.replace(new RegExp(`r="([A-T])${old}"`, 'g'), (_, col) => `r="${col}${nw}"`);
-      // 수식 내 행번호 변경
-      rx = rx.replace(new RegExp(`O${old}(?=[:)])`, 'g'), `O${nw}`);
-      rx = rx.replace(new RegExp(`R${old}(?=[):,])`, 'g'), `R${nw}`);
+      // 행 번호 속성
+      rx = rx.replace('<row r="'+old+'"', '<row r="'+nw+'"');
+      // 셀 주소 (단순 replace 반복 - 20개 열)
+      'ABCDEFGHIJKLMNOPQRST'.split('').forEach(col => {
+        rx = rx.split('r="'+col+old+'"').join('r="'+col+nw+'"');
+      });
+      // 수식 내 행번호 (SUM 범위 등)
+      rx = rx.split('O'+old+':').join('O'+nw+':');
+      rx = rx.split(':R'+old+')').join(':R'+nw+')');
+      rx = rx.split(':R'+old+',').join(':R'+nw+',');
+      rx = rx.split('O'+old+')').join('O'+nw+')');
       footerRows += rx;
     }
 
-    // 3-4) 행12~28 블록을 itemRows+footerRows로 한번에 교체
+    // 행12~28 블록 교체
     const blockStart = xml.indexOf(row12Raw);
     const row28Orig = footerOrig[28];
     const blockEnd = xml.indexOf(row28Orig) + row28Orig.length;
     xml = xml.slice(0, blockStart) + itemRows + footerRows + xml.slice(blockEnd);
 
-    // 3-5) 수식 업데이트
+    // 수식 업데이트
     const lastItem=11+n, rSub=12+n, rPost=18+n, rVat=19+n, rTotal=20+n;
-    xml=xml.replace(/<f>SUM\(O12:R\d+\)<\/f>/,`<f>SUM(O12:R${lastItem})</f>`);
-    xml=xml.replace(/<f>SUM\(O\d+:R\d+\)\*0\.1<\/f>/,`<f>SUM(O${rSub}:R${rPost})*0.1</f>`);
-    xml=xml.replace(/<f>SUM\(O\d+:R\d+\)<\/f>/,`<f>SUM(O${rSub}:R${rVat})</f>`);
-    xml=xml.replace(/(<c r="F9"[^>]*>[\s\S]*?<f>)O\d+(<\/f>)/,`$1O${rTotal}$2`);
-    xml=xml.replace(/(<c r="M9"[^>]*>[\s\S]*?<f>)O\d+(<\/f>)/,`$1O${rTotal}$2`);
+    xml=xml.replace(/<f>SUM\(O12:R\d+\)<\/f>/,'<f>SUM(O12:R'+lastItem+')</f>');
+    xml=xml.replace(/<f>SUM\(O\d+:R\d+\)\*0\.1<\/f>/,'<f>SUM(O'+rSub+':R'+rPost+')*0.1</f>');
+    xml=xml.replace(/<f>SUM\(O\d+:R\d+\)<\/f>/,'<f>SUM(O'+rSub+':R'+rVat+')</f>');
+    xml=xml.replace(/(<c r="F9"[^>]*>[\s\S]*?<f>)O\d+(<\/f>)/,'$1O'+rTotal+'$2');
+    xml=xml.replace(/(<c r="M9"[^>]*>[\s\S]*?<f>)O\d+(<\/f>)/,'$1O'+rTotal+'$2');
 
-    // 3-6) 수신정보
+    // 수신정보
     function setSS(x,addr,idx){
-      x=x.replace(new RegExp(`<c r="${addr}" s="([^"]+)"[^>]*\\/>`),`<c r="${addr}" s="$1" t="s"><v>${idx}</v></c>`);
-      x=x.replace(new RegExp(`<c r="${addr}" s="([^"]+)"[^>]*>[\\s\\S]*?<\\/c>`),`<c r="${addr}" s="$1" t="s"><v>${idx}</v></c>`);
+      const tag1=new RegExp('<c r="'+addr+'" s="([^"]+)"[^>]*/>')
+      const tag2=new RegExp('<c r="'+addr+'" s="([^"]+)"[^>]*>[\\s\\S]*?<\\/c>')
+      x=x.replace(tag1,'<c r="'+addr+'" s="$1" t="s"><v>'+idx+'</v></c>');
+      x=x.replace(tag2,'<c r="'+addr+'" s="$1" t="s"><v>'+idx+'</v></c>');
       return x;
     }
     function setNum(x,addr,val){
-      x=x.replace(new RegExp(`<c r="${addr}" s="([^"]+)"[^>]*\\/>`),`<c r="${addr}" s="$1"><v>${val}</v></c>`);
-      x=x.replace(new RegExp(`<c r="${addr}" s="([^"]+)"[^>]*>[\\s\\S]*?<\\/c>`),`<c r="${addr}" s="$1"><v>${val}</v></c>`);
+      const tag1=new RegExp('<c r="'+addr+'" s="([^"]+)"[^>]*/>')
+      const tag2=new RegExp('<c r="'+addr+'" s="([^"]+)"[^>]*>[\\s\\S]*?<\\/c>')
+      x=x.replace(tag1,'<c r="'+addr+'" s="$1"><v>'+val+'</v></c>');
+      x=x.replace(tag2,'<c r="'+addr+'" s="$1"><v>'+val+'</v></c>');
       return x;
     }
     xml=setSS(xml,'D4',iCN); xml=setSS(xml,'D6',iCC); xml=setSS(xml,'D7',iDate);
     xml=setSS(xml,'N7',iCP); xml=setSS(xml,'T7',iMgr);
-    xml=setNum(xml,`O${12+n}`,fBase); xml=setNum(xml,`O${13+n}`,fCopy);
-    xml=setNum(xml,`O${14+n}`,fTrans); xml=setNum(xml,`O${15+n}`,fSplit);
-    xml=setNum(xml,`O${16+n}`,fSpec);  xml=setNum(xml,`O${rPost}`,fPost);
+    xml=setNum(xml,'O'+(12+n),fBase); xml=setNum(xml,'O'+(13+n),fCopy);
+    xml=setNum(xml,'O'+(14+n),fTrans); xml=setNum(xml,'O'+(15+n),fSplit);
+    xml=setNum(xml,'O'+(16+n),fSpec);  xml=setNum(xml,'O'+rPost,fPost);
 
-    // 3-7) mergeCells
+    // mergeCells
     const mc5=[['B','E'],['F','I'],['J','L'],['M','N'],['O','R']];
     let mcSec=xml.match(/<mergeCells[^>]*>[\s\S]*?<\/mergeCells>/)[0];
-    for (const [c1,c2] of mc5) mcSec=mcSec.replace(`<mergeCell ref="${c1}12:${c2}12"/>`,'');
+    for(const[c1,c2] of mc5) mcSec=mcSec.replace('<mergeCell ref="'+c1+'12:'+c2+'12"/>','');
     let newMC='';
-    for (let i=0;i<n;i++){const r=12+i; for(const[c1,c2] of mc5) newMC+=`<mergeCell ref="${c1}${r}:${c2}${r}"/>`;}
+    for(let i=0;i<n;i++){const r=12+i; for(const[c1,c2] of mc5) newMC+='<mergeCell ref="'+c1+r+':'+c2+r+'"/>';}
     mcSec=mcSec.replace('<mergeCells',newMC+'<mergeCells');
     const origCnt=parseInt((mcSec.match(/count="(\d+)"/) || ['','0'])[1]);
-    mcSec=mcSec.replace(/count="\d+"/,`count="${origCnt-mc5.length+n*mc5.length}"`);
+    mcSec=mcSec.replace(/count="\d+"/,'count="'+(origCnt-mc5.length+n*mc5.length)+'"');
     xml=xml.replace(/<mergeCells[^>]*>[\s\S]*?<\/mergeCells>/,mcSec);
 
-    // 3-8) 인쇄영역
-    xml=xml.replace(/sqref="[^"]*"/,`sqref="A2:T${27+n}"`);
+    xml=xml.replace(/sqref="[^"]*"/,'sqref="A2:T'+(27+n)+'"');
 
     zip.file('xl/worksheets/sheet1.xml',xml);
 
-    // 4. 다운로드
     const blob=await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',compression:'DEFLATE'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
-    a.href=url; a.download=`${qNo}_${cN||'업체'}_${S.tpl?.std_num||'견적서'}_견적서.xlsx`; a.click();
+    a.href=url; a.download=qNo+'_'+(cN||'업체')+'_'+(S.tpl&&S.tpl.std_num||'견적서')+'_견적서.xlsx'; a.click();
     URL.revokeObjectURL(url);
     toast('Excel 저장 완료 ✓','success');
   } catch(err) {
