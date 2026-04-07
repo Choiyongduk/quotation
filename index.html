@@ -393,10 +393,6 @@ tr.dragging{opacity:.4}
       <span class="tb-lbl">견적일자</span>
       <input type="date" class="fi" id="quoteDate" style="width:130px">
     </div>
-    <div class="tb-sec">
-      <span class="tb-lbl">담당자</span>
-      <input type="text" class="fi" id="manager" style="width:80px" placeholder="담당자명">
-    </div>
     <div class="tb-div"></div>
     <button class="btn btn-ghost btn-sm" onclick="clearAll()">초기화</button>
     <button class="btn btn-ghost btn-sm" onclick="addSingleItem()">+ 항목 추가</button>
@@ -421,7 +417,7 @@ tr.dragging{opacity:.4}
             <div class="if"><label>수신 (업체명)</label><input type="text" id="clientName" placeholder="업체명"></div>
             <div class="if"><label>참조 (담당자)</label><input type="text" id="clientContact" placeholder="담당자명"></div>
             <div class="if"><label>연락처</label><input type="text" id="clientPhone" placeholder="전화번호"></div>
-            <div class="if"><label>이메일</label><input type="text" id="clientEmail" placeholder="이메일"></div>
+            <div class="if"><label>FITI 담당자</label><input type="text" id="manager" style="width:100%" placeholder="FITI 담당자명"></div>
           </div>
         </div>
       </div>
@@ -905,7 +901,7 @@ async function exportXlsx() {
       const idx=origCount+extra.length;
       extra.push(s); ssMap[s]=idx; return idx;
     }
-    const iCN=addSS(cN), iCC=addSS(cC), iDate=addSS(qDate), iMgr=addSS(mgr);
+    const iCN=addSS(cN), iCC=addSS(cC), iPhone=addSS(gv("clientPhone")), iDate=addSS(qDate), iMgr=addSS(mgr);
     const iItems=items.map(it=>({
       item:addSS(it.item||''), std:addSS(it.std_method||''),
       days:addSS(it.days||''), note:addSS(it.note||'')
@@ -931,30 +927,37 @@ async function exportXlsx() {
     const row12M = xml.match(/<row r="12"[^>]*>[\s\S]*?<\/row>/);
     if(!row12M) throw new Error('행12 미발견');
     const row12T=row12M[0];
+    // 행 12 → 항목별로 직접 XML 생성 (템플릿 구조 그대로)
+    // B~E: 항목명(s=24~26), F~I: 표준번호(s=21~23), J~L: 단가(s=30), M~N: 시료수(s=31,32), O~R: 수수료(s=30), S: 소요일(s=17), T: 비고(s=18)
     let itemRows='';
     for(let i=0;i<n;i++){
       const r=12+i, it=iItems[i], itd=items[i];
-      let rx=row12T
-        .replace(/r="12"/g,`r="${r}"`)
-        .replace(/r="([A-T])12"/g,(_,c)=>`r="${c}${r}"`);
-      // shared formula 제거 → 일반 수식
-      rx=rx.replace(/<f t="shared" ref="O12" si="0">J12\*M12<\/f>/,`<f>J${r}*M${r}</f>`);
-      rx=rx.replace(/<f t="shared"[^>]*\/>/g,'');
-      // 번호
-      rx=rx.replace(new RegExp(`<c r="A${r}" s="20"><v>\\d+<\/v><\/c>`),`<c r="A${r}" s="20"><v>${i+1}</v></c>`);
-      // 항목명 B
-      rx=rx.replace(`<c r="B${r}" s="70"/>`,`<c r="B${r}" s="70" t="s"><v>${it.item}</v></c>`);
-      // 표준번호 F
-      rx=rx.replace(`<c r="F${r}" s="71"/>`,`<c r="F${r}" s="71" t="s"><v>${it.std}</v></c>`);
-      // 단가 J
-      rx=rx.replace(`<c r="J${r}" s="65"/>`,`<c r="J${r}" s="65"><v>${itd.unit_price||0}</v></c>`);
-      // 시료수 M
-      rx=rx.replace(`<c r="M${r}" s="66"/>`,`<c r="M${r}" s="66"><v>${itd.qty||1}</v></c>`);
-      // 소요일 S
-      rx=rx.replace(`<c r="S${r}" s="17"/>`,`<c r="S${r}" s="17" t="s"><v>${it.days}</v></c>`);
-      // 비고 T
-      rx=rx.replace(`<c r="T${r}" s="18"/>`,`<c r="T${r}" s="18" t="s"><v>${it.note}</v></c>`);
-      itemRows+=rx;
+      const itemVal = it.item  ? ` t="s"><v>${it.item}</v></c>` : '/>';
+      const stdVal  = it.std   ? ` t="s"><v>${it.std}</v></c>`  : '/>';
+      const daysVal = it.days  ? ` t="s"><v>${it.days}</v></c>` : '/>';
+      const noteVal = it.note  ? ` t="s"><v>${it.note}</v></c>` : '/>';
+      itemRows += `<row r="${r}" spans="1:20" ht="50.1" customHeight="1" x14ac:dyDescent="0.3">` +
+        `<c r="A${r}" s="20"><v>${i+1}</v></c>` +
+        `<c r="B${r}" s="24"${itemVal}` +
+        `<c r="C${r}" s="25"/>` +
+        `<c r="D${r}" s="25"/>` +
+        `<c r="E${r}" s="26"/>` +
+        `<c r="F${r}" s="21"${stdVal}` +
+        `<c r="G${r}" s="22"/>` +
+        `<c r="H${r}" s="22"/>` +
+        `<c r="I${r}" s="23"/>` +
+        `<c r="J${r}" s="30"><v>${itd.unit_price||0}</v></c>` +
+        `<c r="K${r}" s="30"/>` +
+        `<c r="L${r}" s="30"/>` +
+        `<c r="M${r}" s="31"><v>${itd.qty||1}</v></c>` +
+        `<c r="N${r}" s="32"/>` +
+        `<c r="O${r}" s="30"><f>J${r}*M${r}</f><v>0</v></c>` +
+        `<c r="P${r}" s="30"/>` +
+        `<c r="Q${r}" s="30"/>` +
+        `<c r="R${r}" s="30"/>` +
+        `<c r="S${r}" s="17"${daysVal}` +
+        `<c r="T${r}" s="18"${noteVal}` +
+        `</row>`;
     }
     // 행12 → 항목 행들로 교체
     xml=xml.replace(row12T,itemRows);
@@ -988,7 +991,9 @@ async function exportXlsx() {
       return x;
     }
     xml=setSS(xml,'D4',iCN); xml=setSS(xml,'D6',iCC);
-    xml=setSS(xml,'D7',iDate); xml=setSS(xml,'T7',iMgr);
+    xml=setSS(xml,'D7',iDate);
+    // N7: 전화번호, T7: FITI담당자
+    xml=setSS(xml,'N7',iPhone); xml=setSS(xml,'T7',iMgr);
 
     // 3-5) 수수료 주입
     xml=setNum(xml,`O${rBase}`,fBase); xml=setNum(xml,`O${rCopy}`,fCopy);
