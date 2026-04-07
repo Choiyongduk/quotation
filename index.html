@@ -879,26 +879,22 @@ function pickTemplateFile() {
 }
 
 function normalizeInsertedItemRows(ws, baseRow, itemCount) {
-  // duplicateRow 이후 항목행(12행~)의 병합/행높이/정렬을 템플릿과 동일하게 강제 적용
+  // duplicateRow는 이미 병합까지 복제하는 경우가 있어 같은 구간을 다시 merge하면
+  // "Cannot merge already merged cells"가 발생할 수 있다.
+  // 따라서 여기서는 병합을 다시 만들지 않고, 행높이/스타일/표시형식만 보정한다.
   const templateHeight = ws.getRow(baseRow).height;
-  const mergeDefs = getSingleRowMerges(ws, baseRow);
 
   for (let i = 0; i < itemCount; i++) {
     const rowNo = baseRow + i;
     const row = ws.getRow(rowNo);
     if (templateHeight) row.height = templateHeight;
 
-    // 기존 병합 정리 후 템플릿 병합 복제
-    unmergeRow(ws, rowNo);
-    for (const m of mergeDefs) {
-      ws.mergeCells(rowNo, m.start, rowNo, m.end);
-    }
-
-    // 셀 스타일 재적용
     for (let c = 1; c <= 20; c++) {
       const src = ws.getCell(baseRow, c);
       const dst = ws.getCell(rowNo, c);
       copyCellStyle(src, dst);
+      if (src.numFmt) dst.numFmt = src.numFmt;
+      if (src.alignment) dst.alignment = JSON.parse(JSON.stringify(src.alignment));
     }
   }
 }
