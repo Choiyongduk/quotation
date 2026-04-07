@@ -7,7 +7,6 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 <style>
 :root{
   --bg:#0b0d12;--s1:#111318;--s2:#171a22;--s3:#1e222d;--s4:#252a38;
@@ -737,172 +736,268 @@ function selExp(t) {
   document.getElementById('optXlsx').classList.toggle('sel', t==='xlsx');
   document.getElementById('optPdf').classList.toggle('sel', t==='pdf');
 }
-async function doExport() {
-  closeModal();
-  try {
-    if (S.expType === 'xlsx') await exportXlsx();
-    else exportPdf();
-  } catch (err) {
-    console.error(err);
-    toast('내보내기 중 오류가 발생했습니다: ' + (err.message || err), 'error');
-  }
-}
+function doExport() { closeModal(); S.expType==='xlsx' ? exportXlsx() : exportPdf(); }
 
 // ═══════════════════════════════════════════════════
 // EXCEL EXPORT
 // ═══════════════════════════════════════════════════
-let loadedTemplateFile = null;
-const templateFileInput = document.getElementById('templateFileInput');
-if (templateFileInput) {
-  templateFileInput.addEventListener('change', (e) => {
-    loadedTemplateFile = e.target.files && e.target.files[0] ? e.target.files[0] : null;
-    if (loadedTemplateFile) toast(`양식 파일 선택됨: ${loadedTemplateFile.name}`, 'success');
-  });
-}
-
-function pickTemplateFile() {
-  return new Promise((resolve) => {
-    if (!templateFileInput) return resolve(null);
-    const handler = (e) => {
-      templateFileInput.removeEventListener('change', handler);
-      loadedTemplateFile = e.target.files && e.target.files[0] ? e.target.files[0] : null;
-      resolve(loadedTemplateFile || null);
-    };
-    templateFileInput.addEventListener('change', handler, { once: true });
-    templateFileInput.click();
-  });
-}
-
-async function loadTemplateArrayBuffer() {
-  if (loadedTemplateFile) {
-    return await loadedTemplateFile.arrayBuffer();
-  }
-
-  const isFileProtocol = location.protocol === 'file:';
-  if (!isFileProtocol) {
-    const templateCandidates = [
-      './template.xlsx',
-      './quote-template.xlsx',
-      './견적서 양식.xlsx',
-      './견적서양식.xlsx',
-      './assets/template.xlsx'
-    ];
-
-    for (const url of templateCandidates) {
-      try {
-        const res = await fetch(url);
-        if (!res.ok) continue;
-        return await res.arrayBuffer();
-      } catch (e) {}
-    }
-  }
-
-  toast('로컬 실행(file://)에서는 보안상 양식 파일 자동 탐색이 막힙니다. 견적서 양식 파일을 한 번 직접 선택해주세요.', 'error');
-  const file = await pickTemplateFile();
-  if (!file) throw new Error('견적서 양식 파일 선택이 취소되었습니다.');
-  return await file.arrayBuffer();
-}
 
 async function exportXlsx() {
-  const cN = gv('clientName'), cC = gv('clientContact');
-  const qDate = gv('quoteDate'), mgr = gv('manager'), qNo = gv('quoteNo');
+  const cN = gv('clientName');
+  const cC = gv('clientContact');
+  const qDate = gv('quoteDate');
+  const mgr = gv('manager');
+  const qNo = gv('quoteNo');
   const items = flatItems();
-  if (!items.length) { toast('선택된 항목이 없습니다', 'error'); return; }
 
-  const test = items.reduce((s,i)=>s+(i.unit_price||0)*(i.qty||1),0);
-  const fBase=gn('fBase'), fCopy=gn('fCopy'), fTrans=gn('fTrans'), fSplit=gn('fSplit'), fSpec=gn('fSpec'), fPost=gn('fPost');
+  const test = items.reduce((s, i) => s + (i.unit_price || 0) * (i.qty || 1), 0);
+  const fBase = gn('fBase'), fCopy = gn('fCopy'), fTrans = gn('fTrans'),
+        fSplit = gn('fSplit'), fSpec = gn('fSpec'), fPost = gn('fPost');
   const fees = fBase + fCopy + fTrans + fSplit + fSpec + fPost;
   const vat = Math.round((test + fees) * 0.1);
   const total = test + fees + vat;
 
   try {
-    const buf = await loadTemplateArrayBuffer();
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buf);
+    const wb = await loadTemplateWorkbook();
+    const ws = wb.worksheets[0];
 
-    const ws = wb.getWorksheet('분리막') || wb.worksheets[0];
-    if (!ws) throw new Error('양식 시트를 찾을 수 없습니다.');
+    const BASE_ITEM_ROW = 12;
+    const BASE_SUMMARY_ROW = 13;
 
-    const itemStart = 12;
-    const extraRows = Math.max(0, items.length - 1);
-
-    // 템플릿의 항목 1줄(A12:T12)을 그대로 복제해서 아래로 확장
-    if (extraRows > 0) {
-      ws.duplicateRow(itemStart, extraRows, true);
+    // 항목 행 추가: 1개면 12행만 사용, 2개 이상이면 12행 바로 아래로 복제 삽입
+    if (items.length > 1) {
+      ws.duplicateRow(BASE_ITEM_ROW, items.length - 1, true);
+      normalizeInsertedItemRows(ws, BASE_ITEM_ROW, items.length);
     }
 
-    // 헤더 입력
-    ws.getCell('D4').value = cN || '';
-    ws.getCell('D6').value = cC || '';
-    ws.getCell('D7').value = qDate || '';
-    ws.getCell('T7').value = mgr || '';
-    ws.getCell('F9').value = total;
-    ws.getCell('M9').value = total;
-    ws.getCell('F9').numFmt = '#,##0';
-    ws.getCell('M9').numFmt = '#,##0';
+    const subtotalRow = BASE_SUMMARY_ROW + (items.length - 1);
+    const feeStartRow = subtotalRow + 1;
+    const totalRow = feeStartRow + 7;
+    const noteStartRow = totalRow + 2;
 
-    // 항목 영역 채우기
-    items.forEach((item, i) => {
-      const r = itemStart + i;
-      const itemTotal = (item.unit_price || 0) * (item.qty || 1);
+    // 상단 정보
+    setCellValue(ws, 'D4', cN || '');
+    setCellValue(ws, 'D6', cC || '');
+    setCellValue(ws, 'D7', qDate || '');
+    setCellValue(ws, 'S7', mgr || '');
 
-      // 병합의 좌상단 셀만 채움
-      ws.getCell(`A${r}`).value = i + 1;
-      ws.getCell(`B${r}`).value = item.item || '';
-      ws.getCell(`F${r}`).value = item.std_method || '';
-      ws.getCell(`J${r}`).value = item.unit_price || 0;
-      ws.getCell(`M${r}`).value = item.qty || 1;
-      ws.getCell(`O${r}`).value = itemTotal;
-      ws.getCell(`S${r}`).value = item.days || '';
-      ws.getCell(`T${r}`).value = item.note || '';
+    // 항목행 입력
+    items.forEach((it, idx) => {
+      const r = BASE_ITEM_ROW + idx;
+      ws.getCell(`A${r}`).value = idx + 1;
+      ws.getCell(`B${r}`).value = it.item || '';
+      ws.getCell(`F${r}`).value = it.std_method || '';
+      ws.getCell(`J${r}`).value = Number(it.unit_price || 0);
+      ws.getCell(`M${r}`).value = Number(it.qty || 1);
+      ws.getCell(`O${r}`).value = Number((it.unit_price || 0) * (it.qty || 1));
+      ws.getCell(`S${r}`).value = it.days || '';
+      ws.getCell(`T${r}`).value = sanitizeNote(it.note || '');
 
+      // 템플릿의 표시 형식 유지
       ws.getCell(`J${r}`).numFmt = '#,##0';
       ws.getCell(`M${r}`).numFmt = '#,##0';
       ws.getCell(`O${r}`).numFmt = '#,##0';
+      ws.getCell(`T${r}`).alignment = Object.assign({}, ws.getCell(`T${r}`).alignment || {}, { wrapText: true, vertical: 'center' });
       ws.getRow(r).commit();
     });
 
-    // 하단 합계 블록 위치 계산
-    const rSubtotal = 13 + extraRows;
-    const rBase = 14 + extraRows;
-    const rCopy = 15 + extraRows;
-    const rTrans = 16 + extraRows;
-    const rSplit = 17 + extraRows;
-    const rSpec = 18 + extraRows;
-    const rPost = 19 + extraRows;
-    const rVat = 20 + extraRows;
-    const rTotal = 21 + extraRows;
+    // 소계/부대비용/합계
+    setCellValue(ws, `O${subtotalRow}`, test);
+    ws.getCell(`O${subtotalRow}`).numFmt = '#,##0';
 
-    ws.getCell(`O${rSubtotal}`).value = test;
-    ws.getCell(`O${rBase}`).value = fBase;
-    ws.getCell(`O${rCopy}`).value = fCopy;
-    ws.getCell(`O${rTrans}`).value = fTrans;
-    ws.getCell(`O${rSplit}`).value = fSplit;
-    ws.getCell(`O${rSpec}`).value = fSpec;
-    ws.getCell(`O${rPost}`).value = fPost;
-    ws.getCell(`O${rVat}`).value = vat;
-    ws.getCell(`O${rTotal}`).value = total;
+    setCellValue(ws, `O${feeStartRow}`, fBase);
+    setCellValue(ws, `O${feeStartRow + 1}`, fCopy);
+    setCellValue(ws, `O${feeStartRow + 2}`, fTrans);
+    setCellValue(ws, `O${feeStartRow + 3}`, fSplit);
+    setCellValue(ws, `O${feeStartRow + 4}`, fSpec);
+    setCellValue(ws, `O${feeStartRow + 5}`, fPost);
+    setCellValue(ws, `O${feeStartRow + 6}`, vat);
+    setCellValue(ws, `O${totalRow}`, total);
 
-    [rSubtotal, rBase, rCopy, rTrans, rSplit, rSpec, rPost, rVat, rTotal].forEach(r => {
+    for (let r = feeStartRow; r <= totalRow; r++) {
       ws.getCell(`O${r}`).numFmt = '#,##0';
-    });
+    }
 
-    // 기존 템플릿 수식 대신 값 고정
-    ws.getCell(`O${rSubtotal}`).formula = undefined;
-    ws.getCell(`O${rVat}`).formula = undefined;
-    ws.getCell(`O${rTotal}`).formula = undefined;
+    // 견적금액 상단
+    setCellValue(ws, 'F9', numToKorean(total));
+    setCellValue(ws, 'M9', total);
+    ws.getCell('M9').numFmt = '#,##0';
 
-    // 다운로드
-    const out = await wb.xlsx.writeBuffer();
-    saveAs(
-      new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
-      `${qNo}_${cN||'업체'}_${S.tpl?.std_num||'견적서'}.xlsx`
-    );
-    toast('양식 고정형 Excel 저장 완료 ✓', 'success');
+    // 파일명
+    const filename = `${qNo}_${(cN || '업체').replace(/[\\/:*?"<>|]/g, '_')}_${S.tpl?.std_num || '견적서'}.xlsx`;
+
+    const buffer = await wb.xlsx.writeBuffer();
+    downloadBlob(buffer, filename, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    toast('Excel 저장 완료 ✓', 'success');
   } catch (err) {
     console.error(err);
-    toast('내보내기 오류가 발생했습니다: ' + (err && err.message ? err.message : err), 'error');
+    toast(`내보내기 오류가 발생했습니다: ${err.message || err}`, 'error');
   }
+}
+
+async function loadTemplateWorkbook() {
+  const workbook = new ExcelJS.Workbook();
+  const buf = await readTemplateArrayBuffer();
+  await workbook.xlsx.load(buf);
+  return workbook;
+}
+
+async function readTemplateArrayBuffer() {
+  const candidates = [
+    './template.xlsx',
+    './견적서 양식.xlsx',
+    './견적서양식.xlsx',
+    './quote-template.xlsx'
+  ];
+
+  // 웹서버 환경 우선
+  if (location.protocol !== 'file:') {
+    for (const path of candidates) {
+      try {
+        const res = await fetch(path, { cache: 'no-store' });
+        if (res.ok) return await res.arrayBuffer();
+      } catch (_) {}
+    }
+  }
+
+  // 로컬 실행 또는 fetch 실패 시 직접 선택
+  return await pickTemplateFile();
+}
+
+function pickTemplateFile() {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.xlsx';
+    input.onchange = async () => {
+      const file = input.files && input.files[0];
+      if (!file) return reject(new Error('견적서 양식 파일 선택이 취소되었습니다.'));
+      resolve(await file.arrayBuffer());
+    };
+    input.click();
+  });
+}
+
+function normalizeInsertedItemRows(ws, baseRow, itemCount) {
+  // duplicateRow 이후 항목행(12행~)의 병합/행높이/정렬을 템플릿과 동일하게 강제 적용
+  const templateHeight = ws.getRow(baseRow).height;
+  const mergeDefs = getSingleRowMerges(ws, baseRow);
+
+  for (let i = 0; i < itemCount; i++) {
+    const rowNo = baseRow + i;
+    const row = ws.getRow(rowNo);
+    if (templateHeight) row.height = templateHeight;
+
+    // 기존 병합 정리 후 템플릿 병합 복제
+    unmergeRow(ws, rowNo);
+    for (const m of mergeDefs) {
+      ws.mergeCells(rowNo, m.start, rowNo, m.end);
+    }
+
+    // 셀 스타일 재적용
+    for (let c = 1; c <= 20; c++) {
+      const src = ws.getCell(baseRow, c);
+      const dst = ws.getCell(rowNo, c);
+      copyCellStyle(src, dst);
+    }
+  }
+}
+
+function getSingleRowMerges(ws, rowNo) {
+  const defs = [];
+  const merges = ws.model && ws.model.merges ? ws.model.merges : [];
+  for (const ref of merges) {
+    const m = decodeRange(ref);
+    if (m.startRow === rowNo && m.endRow === rowNo) {
+      defs.push({ start: m.startCol, end: m.endCol });
+    }
+  }
+  return defs;
+}
+
+function unmergeRow(ws, rowNo) {
+  const merges = (ws.model && ws.model.merges ? [...ws.model.merges] : []);
+  for (const ref of merges) {
+    const m = decodeRange(ref);
+    if (m.startRow === rowNo && m.endRow === rowNo) {
+      try { ws.unMergeCells(ref); } catch (_) {}
+    }
+  }
+}
+
+function decodeRange(ref) {
+  const [a, b] = ref.split(':');
+  const s = decodeAddress(a);
+  const e = decodeAddress(b || a);
+  return { startRow: s.row, startCol: s.col, endRow: e.row, endCol: e.col };
+}
+
+function decodeAddress(addr) {
+  const m = /^([A-Z]+)(\d+)$/.exec(addr);
+  const letters = m[1];
+  let col = 0;
+  for (let i = 0; i < letters.length; i++) col = col * 26 + (letters.charCodeAt(i) - 64);
+  return { col, row: Number(m[2]) };
+}
+
+function copyCellStyle(src, dst) {
+  if (src.font) dst.font = JSON.parse(JSON.stringify(src.font));
+  if (src.alignment) dst.alignment = JSON.parse(JSON.stringify(src.alignment));
+  if (src.border) dst.border = JSON.parse(JSON.stringify(src.border));
+  if (src.fill) dst.fill = JSON.parse(JSON.stringify(src.fill));
+  if (src.numFmt) dst.numFmt = src.numFmt;
+  if (src.protection) dst.protection = JSON.parse(JSON.stringify(src.protection));
+  if (src.style && src.style !== {}) dst.style = JSON.parse(JSON.stringify(src.style));
+}
+
+function setCellValue(ws, addr, value) {
+  ws.getCell(addr).value = value;
+}
+
+function sanitizeNote(text) {
+  return String(text || '').replace(/_x000D_/g, '\n');
+}
+
+function downloadBlob(buffer, filename, mime) {
+  const blob = new Blob([buffer], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function numToKorean(num) {
+  num = Math.floor(Number(num) || 0);
+  if (!num) return '영';
+  const units = ['', '만', '억', '조'];
+  const nums = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구'];
+  const smallUnits = ['', '십', '백', '천'];
+
+  function fourToKor(n) {
+    let out = '';
+    const s = String(n).padStart(4, '0');
+    for (let i = 0; i < 4; i++) {
+      const digit = Number(s[i]);
+      if (!digit) continue;
+      const pos = 3 - i;
+      out += (digit === 1 && pos > 0 ? '' : nums[digit]) + smallUnits[pos];
+    }
+    return out;
+  }
+
+  let result = '';
+  let unitIdx = 0;
+  while (num > 0) {
+    const chunk = num % 10000;
+    if (chunk) result = fourToKor(chunk) + units[unitIdx] + result;
+    num = Math.floor(num / 10000);
+    unitIdx++;
+  }
+  return result;
 }
 
 // ═══════════════════════════════════════════════════
@@ -1004,7 +1099,6 @@ ${[[' 기본료',fBase],[' 부본료',fCopy],[' 번역부본료',fTrans],[' 분�
 </div>
 <div class="sign">( 재 ) F I T I &nbsp; 시 험 연 구 원 장</div>
 <script>window.onload=()=>window.print();<\/script>
-<input type="file" id="templateFileInput" accept=".xlsx,.xls" style="display:none">
 </body></html>`;
 
   window.open(URL.createObjectURL(new Blob([html],{type:'text/html;charset=utf-8'})),'_blank');
@@ -1026,6 +1120,5 @@ function toast(msg,type='info'){
 </script>
 
 <script src="templates.js"></script>
-<input type="file" id="templateFileInput" accept=".xlsx,.xls" style="display:none">
 </body>
 </html>
